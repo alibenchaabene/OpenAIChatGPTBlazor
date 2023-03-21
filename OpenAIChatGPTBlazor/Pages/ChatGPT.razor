@@ -1,0 +1,185 @@
+﻿@page "/chatgpt"
+<PageTitle>ChatGPT</PageTitle>
+<style>
+	.assistant, .user {
+		position: relative;
+		font-family: arial;
+		font-size: 1.1em;
+		border-radius: 10px;
+		padding: 20px;
+		margin-bottom: 20px;
+	}
+
+		.assistant:after, .user:after {
+			content: '';
+			border: 20px solid transparent;
+			position: absolute;
+			margin-top: -30px;
+		}
+
+	.user {
+		background: #0B93F6;
+		color: white;
+		margin-left: 20%;
+		margin-right: 100px;
+		top: 30%;
+		text-align: right;
+		font-weight: bold;
+	}
+
+	.assistant {
+		background: #4CAF50;
+		color: white;
+		margin-left: 100px;
+		margin-right: 20%;
+		font-weight: bold;
+	}
+
+	.msg {
+		font-size: small;
+	}
+</style>
+
+<p style="font-size:small"><b>Total used tokens:</b> @TotalTokens</p>
+<br />
+<div id="chatcontainer" style="height:350px; width:100%; overflow: scroll;">
+	@foreach (var item in messages)
+	{
+		<div>
+			@if (item.Role == "user")
+			{
+				<div style="float: right; margin-right: 20px; margin-top: 10px">
+					<b>User</b>
+				</div>
+				<div class="@item.Role">
+					<div class="msg">
+						@item.Prompt
+					</div>
+				</div>
+			}
+			else
+			{
+				<div style="float: left; margin-left: 20px; margin-top: 10px">
+					<b>ChatGPT&nbsp;&nbsp;</b>
+				</div>
+				<div class="@item.Role">
+					<div class="msg">
+						@if (item.Prompt != null)
+						{
+							@((MarkupString)item.Prompt)
+						}
+					</div>
+				</div>
+			}
+		</div>
+	}
+	@if (_isLoading)
+	{
+		<div class="d-flex justify-content-center">
+			<div class="spinner-border" role="status">
+			</div>
+		</div>
+	}
+</div>
+<br />
+<div class="row">
+	<div class="col-sm-8">
+		<input type="text"
+			   class="form-control"
+			   placeholder="Ask me Anything..."
+			   @bind="prompt" />
+	</div>
+	<div class="col-sm-4">
+		<button class="btn btn-success"
+				@onclick="StartChatGPTService">
+			Ask Me !
+		</button>
+		<button class="btn btn-danger"
+				@onclick="Clear">
+			Clear
+		</button>
+	</div>
+</div>
+<p style="color:red">@ErrorMessage</p>
+@code {
+	string ApiKey = string.Empty;
+	string ErrorMessage = string.Empty;
+	string prompt = string.Empty;
+	bool _isLoading = false;
+	int TotalTokens = 0;
+	List<Message> messages = new List<Message>();
+
+	protected override void OnInitialized()
+	{
+		ApiKey = _configuration["OpenAISettings:ApiKey"] ?? "";
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		await _jsRuntime.InvokeAsync<string>("ScrollToBottom", "chatcontainer");
+	}
+
+	public async Task StartChatGPTService()
+	{
+		try
+		{
+			StateHasChanged();
+			ErrorMessage = string.Empty;
+			_isLoading = true;
+
+			var _openAIClient = new OpenAIClient(new OpenAIAuthentication(ApiKey));
+
+			var chatPromptList = new List<ChatPrompt>();
+
+			foreach (var item in messages)
+			{
+				chatPromptList.Add(new ChatPrompt(item.Role, item.Prompt));
+			}
+
+			chatPromptList.Add(new ChatPrompt("user", prompt));
+
+			var chatRequest = new ChatRequest(chatPromptList);
+			var result = await _openAIClient.ChatEndpoint.GetCompletionAsync(chatRequest);
+
+			messages.Add(new Message
+				{
+					Prompt = prompt,
+					Role = "user",
+					Tokens = result.Usage.PromptTokens
+				});
+			messages.Add(new Message
+				{
+					Prompt = result.FirstChoice.Message,
+					Role = "assistant",
+					Tokens = result.Usage.CompletionTokens
+				});
+
+			TotalTokens = TotalTokens + result.Usage.TotalTokens;
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = ex.Message;
+		}
+		finally
+		{
+			prompt = string.Empty;
+			_isLoading = false;
+			StateHasChanged();
+		}
+	}
+
+	void Clear()
+	{
+		messages = new List<Message>();
+		TotalTokens = 0;
+		ErrorMessage = string.Empty;
+		StateHasChanged();
+	}
+
+	public class Message
+	{
+		public string? Prompt { get; set; }
+		public string? Role { get; set; }
+		public int Tokens { get; set; }
+	}
+}

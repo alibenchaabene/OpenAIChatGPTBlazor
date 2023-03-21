@@ -1,0 +1,74 @@
+﻿@page "/imagegenerator"
+<PageTitle>Image Generator</PageTitle>
+
+<h2 style="text-align:center"><b>Model - DALL-E</b></h2>
+<br />
+<h5><b>Given a prompt, the model will return a generated image or images.</b></h5>
+<div class="row">
+	<div class="col-sm-10">
+		<input type="text"
+	  class="form-control"
+	  placeholder="Give me a clue..."
+			   @bind="prompt" />
+	</div>
+	<div class="col-sm-2">
+		<button class="btn btn-success"
+				@onclick="StartImageGeneratorService">
+			Generate
+		</button>
+	</div>
+</div>
+<br />
+@if (_isLoading)
+{
+	<div class="d-flex justify-content-center">
+		<div class="spinner-border" role="status">
+		</div>
+	</div>
+}
+else
+{
+	<p>@((MarkupString)GeneratedImage)</p>
+}
+<p style="color:red">@ErrorMessage</p>
+
+@code {
+	string ApiKey = string.Empty;
+	string ErrorMessage = string.Empty;
+	string prompt = string.Empty;
+	string GeneratedImage = string.Empty;
+	bool _isLoading = false;
+
+	protected override void OnInitialized()
+	{
+		ApiKey = _configuration["OpenAISettings:ApiKey"] ?? "";
+	}
+
+	public async Task StartImageGeneratorService()
+	{
+		try
+		{
+			StateHasChanged();
+			ErrorMessage = string.Empty;
+			GeneratedImage = string.Empty;
+			_isLoading = true;
+
+			var _openAIClient = new OpenAIClient(new OpenAIAuthentication(ApiKey));
+			var imageResult = await _openAIClient.ImagesEndPoint.GenerateImageAsync(prompt, 3, ImageSize.Small);
+			foreach (var image in imageResult)
+			{
+				GeneratedImage += $@"<img src='{image}'/>&nbsp;&nbsp;&nbsp;";
+			}
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = ex.Message;
+		}
+		finally
+		{
+			_isLoading = false;
+			StateHasChanged();
+		}
+	}
+}
+
